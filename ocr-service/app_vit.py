@@ -2,6 +2,7 @@
 import os, csv, re, math, io
 from pathlib import Path
 from typing import List
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -200,6 +201,10 @@ USE_L2GRAD     = os.getenv("PP_CANNY_L2", "1") not in ("0", "false", "False")
 OUTPUT_MODE    = os.getenv("PP_OUTPUT_MODE", "edges_only").strip().lower()
 INVERT_OUTPUT  = os.getenv("PP_INVERT", "1") not in ("0", "false", "False")
 
+# Debug save of preprocessing outputs (toggle with env; or comment out the block below)
+SAVE_PREPROC = os.getenv("SAVE_PREPROC", "1") not in ("0", "false", "False")
+PREPROC_DIR  = os.getenv("PREPROC_DIR", "preproc_debug")
+
 def _normalize_0_255(img_gray_u8: np.ndarray) -> np.ndarray:
     img = img_gray_u8.astype(np.float32)
     lo, hi = np.percentile(img, 1), np.percentile(img, 99)
@@ -309,7 +314,6 @@ async def predict(
     model_choice: str = Form("vit", alias="model"),   # <-- accept field named "model"
     use_context: str = Form("0"),
 ):
-    
     # DEBUG: log what we received
     print(f"[predict] model={model_choice!r} use_context_raw={use_context!r}")
 
@@ -328,6 +332,30 @@ async def predict(
 
     # 3) Canvas
     canvas_u8 = fit_to_canvas_1024x128_u8(fused_u8)
+
+    
+    if SAVE_PREPROC:
+        try:
+            os.makedirs(PREPROC_DIR, exist_ok=True)
+            orig_name = (file.filename or "upload").strip()
+            safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", orig_name)
+            ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+            fused_path  = os.path.join(PREPROC_DIR, f"{ts}_{safe_name}_fused.png")
+            canvas_path = os.path.join(PREPROC_DIR, f"{ts}_{safe_name}_canvas.png")
+
+            # comment this out to not save the preprocessed images
+            # Both are single-channel uint8; cv2.imwrite handles that fine
+            # cv2.imwrite(fused_path, fused_u8)    # fused (post-denoise/norm/edges)
+            # cv2.imwrite(canvas_path, canvas_u8)  # final 128x1024 canvas
+            # comment this out to not save the preprocessed images
+            
+            saved_paths = {"fused_png": fused_path, "canvas_png": canvas_path}
+        except Exception as e:
+            print(f"[debug-save] failed: {e}")
+            saved_paths = None
+    else:
+        saved_paths = None
 
     # 4) Tensor
     canvas = canvas_u8.astype(np.float32) / 255.0
@@ -381,6 +409,9 @@ async def predict(
         "shape": [int(s) for s in canvas_u8.shape],
         "preproc_mode": OUTPUT_MODE,
         "inverted": bool(INVERT_OUTPUT),
+
+        # NEW: where the debug images were saved (or null if disabled/failed)
+        "debug_saved": saved_paths,
     }
 
 if __name__ == "__main__":

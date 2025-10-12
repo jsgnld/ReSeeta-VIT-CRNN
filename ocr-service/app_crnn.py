@@ -1,6 +1,7 @@
 # app_crnn.py
-import os, numpy as np, cv2, torch, importlib.util
+import os, re, numpy as np, cv2, torch, importlib.util
 from typing import List
+from datetime import datetime
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -71,6 +72,10 @@ USE_L2GRAD     = os.getenv("PP_CANNY_L2", "1") not in ("0","false","False")
 
 OUTPUT_MODE    = os.getenv("PP_OUTPUT_MODE", "edges_only").strip().lower()
 INVERT_OUTPUT  = os.getenv("PP_INVERT", "1") not in ("0","false","False")
+
+# Debug save of preprocessing outputs (toggle with env; or comment out the block below)
+SAVE_PREPROC = os.getenv("SAVE_PREPROC", "1") not in ("0", "false", "False")
+PREPROC_DIR  = os.getenv("PREPROC_DIR", "preproc_debug")
 
 def _normalize_0_255(img_gray_u8: np.ndarray) -> np.ndarray:
     img = img_gray_u8.astype(np.float32)
@@ -215,6 +220,34 @@ async def predict(file: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse({"error": f"Preprocessing failed: {e}"}, status_code=400)
 
+    # ------------------------------
+    # DEBUG: save preprocessing PNGs
+    # (comment this whole block out when not needed)
+    # ------------------------------
+    if SAVE_PREPROC:
+        try:
+            os.makedirs(PREPROC_DIR, exist_ok=True)
+            orig_name = (file.filename or "upload").strip()
+            safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", orig_name)
+            ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+            fused_path  = os.path.join(PREPROC_DIR, f"{ts}_{safe_name}_fused.png")
+            canvas_path = os.path.join(PREPROC_DIR, f"{ts}_{safe_name}_canvas.png")
+
+            # Comment either or both lines below to stop writing specific files:
+            # cv2.imwrite(fused_path, fused_u8)    # fused (post-denoise/norm/edges)
+            # cv2.imwrite(canvas_path, canvas_u8)  # final 128x1024 canvas
+
+            # If you leave both commented, set saved_paths=None or drop from response
+            cv2.imwrite(fused_path, fused_u8)
+            cv2.imwrite(canvas_path, canvas_u8)
+            saved_paths = {"fused_png": fused_path, "canvas_png": canvas_path}
+        except Exception as e:
+            print(f"[debug-save] failed: {e}")
+            saved_paths = None
+    else:
+        saved_paths = None
+
     # 3) To float tensor (0..1), shape (1,1,H,W)
     x = (canvas_u8.astype(np.float32) / 255.0)[None, None, ...]
     X = torch.from_numpy(x).to(DEVICE)
@@ -230,6 +263,7 @@ async def predict(file: UploadFile = File(...)):
         "shape": [int(s) for s in canvas_u8.shape],
         "preproc_mode": OUTPUT_MODE,
         "inverted": bool(INVERT_OUTPUT),
+        "debug_saved": saved_paths,  # where PNGs were written (or null)
     }
 
 if __name__ == "__main__":
