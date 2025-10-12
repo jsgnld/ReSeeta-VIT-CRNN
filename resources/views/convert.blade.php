@@ -209,6 +209,7 @@
       font-size: .875rem;
       line-height: 1.5;
       word-break: break-word;
+      margin-left: 5px;
     }
     .result-debug code{
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
