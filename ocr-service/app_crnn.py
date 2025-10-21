@@ -235,12 +235,12 @@ async def predict(file: UploadFile = File(...)):
             canvas_path = os.path.join(PREPROC_DIR, f"{ts}_{safe_name}_canvas.png")
 
             # Comment either or both lines below to stop writing specific files:
-            # cv2.imwrite(fused_path, fused_u8)    # fused (post-denoise/norm/edges)
+            cv2.imwrite(fused_path, fused_u8)    # fused (post-denoise/norm/edges)
             # cv2.imwrite(canvas_path, canvas_u8)  # final 128x1024 canvas
 
             # If you leave both commented, set saved_paths=None or drop from response
             cv2.imwrite(fused_path, fused_u8)
-            cv2.imwrite(canvas_path, canvas_u8)
+            # cv2.imwrite(canvas_path, canvas_u8)
             saved_paths = {"fused_png": fused_path, "canvas_png": canvas_path}
         except Exception as e:
             print(f"[debug-save] failed: {e}")
