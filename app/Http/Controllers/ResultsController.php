@@ -12,11 +12,20 @@ class ResultsController extends Controller
         $results = $this->parseCsv($csvPath);
         $lexicon = $this->parseCsv($lexiconPath);
         
+        // Create a lexicon lookup array by No. for faster matching
+        $lexiconLookup = [];
+        foreach ($lexicon as $lex) {
+            $key = trim($lex['No.']);
+            $lexiconLookup[$key] = $lex;
+        }
+        
         // Merge lexicon corrections into results
         foreach ($results as &$result) {
-            $matchingLex = collect($lexicon)->firstWhere('No.', $result['No.']);
-            if ($matchingLex) {
-                $result['predicted_label_lex'] = $matchingLex['predicted_label'] ?? null;
+            $resultNo = trim($result['No.']);
+            if (isset($lexiconLookup[$resultNo])) {
+                $result['predicted_label_lex'] = trim($lexiconLookup[$resultNo]['predicted_label_lex'] ?? '');
+            } else {
+                $result['predicted_label_lex'] = '';
             }
         }
         
