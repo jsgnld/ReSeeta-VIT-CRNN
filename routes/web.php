@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\OcrController;
+use App\Http\Controllers\ResultsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -28,6 +29,10 @@ Route::get('/about', function () {
 Route::get('/convert', function () {
     return view('convert');
 });
+
+Route::get('/vit-crnn-results', [ResultsController::class, 'vitCrnnResults']);
+
+Route::get('/crnn-results', [ResultsController::class, 'crnnResults']);
 
 // Route::get('/', function () {
 //     $posts = [];
