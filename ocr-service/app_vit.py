@@ -346,7 +346,7 @@ async def predict(
 
             # comment this out to not save the preprocessed images
             # Both are single-channel uint8; cv2.imwrite handles that fine
-            # cv2.imwrite(fused_path, fused_u8)    # fused (post-denoise/norm/edges)
+            cv2.imwrite(fused_path, fused_u8)    # fused (post-denoise/norm/edges)
             # cv2.imwrite(canvas_path, canvas_u8)  # final 128x1024 canvas
             # comment this out to not save the preprocessed images
             

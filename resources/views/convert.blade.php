@@ -239,6 +239,24 @@
 /* Trim heading spacing so the gray card starts at the same height */
 .pane.result .placeholder { margin: 0 0 8px !important; }
 
+    /* ====== NEW: small styles for history header buttons (Clear + Print) ====== */
+    .history-header { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+    .history-header > div { display:flex; gap:8px; align-items:center; }
+    .history-clear, .history-print {
+      background: transparent;
+      border: 1px solid #e5ecea;
+      padding: 8px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 700;
+      color: var(--ink-2);
+    }
+    .history-print[disabled], .history-clear[disabled] { opacity: .45; cursor: not-allowed; pointer-events: none; }
+    .history-print img { width:18px; height:18px; vertical-align:middle; }
+    .history-clear img { width:14px; height:14px; vertical-align:middle; }
+    /* small tooltip-like hover (title attribute is still primary) */
+    .history-print:hover, .history-clear:hover { transform:translateY(-1px); }
+
   </style>
 </head>
 <body>
@@ -334,6 +352,21 @@
             <div class="history-header">
               <strong>Recent Results</strong>
               <div>
+                <!-- PRINT button added here beside Clear -->
+                <button type="button"
+                        id="btnPrintHistory"
+                        class="history-print"
+                        title="Print Prescriptions"
+                        aria-label="Print prescriptions"
+                        disabled>
+                  <!-- inline SVG printer icon for reliability -->
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M6 9V3h12v6" stroke="#2A6B6F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                    <rect x="6" y="14" width="12" height="7" rx="2" stroke="#2A6B6F" stroke-width="1.6"/>
+                    <path d="M8 14v-3h8v3" stroke="#2A6B6F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+
                 <button type="button" id="btnClearHistory" class="history-clear" aria-label="Clear history">Clear</button>
                 <button type="button" id="btnCloseHistory" class="history-close" aria-label="Close history">✕</button>
               </div>
@@ -407,6 +440,9 @@
   const btnClearHistory = document.getElementById('btnClearHistory');
   const historyPanel = document.getElementById('historyPanel');
 
+  // NEW: print button ref
+  const btnPrintHistory = document.getElementById('btnPrintHistory');
+
   const modelSelect = document.getElementById('modelSelect');
   const modelUsedNote = document.getElementById('modelUsedNote');
   const contextToggle = document.getElementById('contextToggle'); // UI only
@@ -447,6 +483,8 @@
       ts: Date.now()
     });
     saveHistory(items);
+    // ensure print availability is updated
+    updatePrintAvailability();
   }
   function updateHistoryItem(id, patch) {
     const items = loadHistory();
@@ -454,6 +492,8 @@
     if (i !== -1) {
       items[i] = { ...items[i], ...patch };
       saveHistory(items);
+      // ensure print availability is updated
+      updatePrintAvailability();
     }
   }
   function formatDate(ts) { return new Date(ts).toLocaleString(); }
@@ -463,7 +503,10 @@
   function renderHistory() {
     const items = loadHistory();
     const el = historyPanel.querySelector('.history-body');
-    if (!items.length) { el.innerHTML = '<em>No history yet.</em>'; return; }
+    if (!items.length) { el.innerHTML = '<em>No history yet.</em>'; 
+      updatePrintAvailability();
+      return; 
+    }
     el.innerHTML = items.map(it => `
       <div class="history-item" data-id="${it.id}">
         <img src="${it.dataUrl}" alt="${escapeHtml(it.name)}">
@@ -485,6 +528,9 @@
         resultBox.textContent = item.resultText || '';
       });
     });
+
+    // Update print availability after rendering history
+    updatePrintAvailability();
   }
 
   function clearHistory(alsoResetUI = false){
@@ -497,6 +543,8 @@
       document.getElementById('fileName').textContent = 'filename.png';
       resetUploadingUI();
     }
+    // Update print availability after clearing
+    updatePrintAvailability();
   }
 
   /* =========================
@@ -516,7 +564,7 @@
     progressCard.hidden = true;
     progressCard.classList.add('is-hidden');
     [...uploadInner.children].forEach(el => {
-      if (el !== previewImage) el.classList.add('is-hidden');
+      if (el !== previewImage && el !== progressCard) el.classList.add('is-hidden');
       else el.classList.remove('is-hidden');
     });
     previewImage.style.display = 'block';
@@ -793,6 +841,144 @@
 
   btnClearHistory?.addEventListener('click', () => clearHistory(false));
 
+  /* ========== NEW: print helpers ========== */
+
+  // returns items that are eligible to print
+  function getConvertedItems() {
+    return loadHistory().filter(it =>
+      it.status === 'converted' &&
+      it.resultText &&
+      it.resultText !== '(error)'
+    );
+  }
+
+  // enable/disable print button depending on presence of converted items
+  function updatePrintAvailability() {
+    try {
+      const converted = getConvertedItems();
+      if (!btnPrintHistory) return;
+      if (converted.length > 0) {
+        btnPrintHistory.removeAttribute('disabled');
+        btnPrintHistory.setAttribute('aria-disabled', 'false');
+      } else {
+        btnPrintHistory.setAttribute('disabled', '');
+        btnPrintHistory.setAttribute('aria-disabled', 'true');
+      }
+    } catch (e) {
+      // fail silently - don't break UI
+      if (btnPrintHistory) {
+        btnPrintHistory.setAttribute('disabled', '');
+        btnPrintHistory.setAttribute('aria-disabled', 'true');
+      }
+    }
+  }
+
+  // Build printable document and trigger print dialog
+  function printConvertedItems() {
+    const items = getConvertedItems();
+    if (!items || !items.length) {
+      alert('No converted prescriptions available to print.');
+      return;
+    }
+
+    // Build a clean HTML for printing
+    const printableStyles = `
+      <style>
+        @page { margin: 18mm; }
+        body { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; color: #142826; }
+        h1 { font-size:18px; margin-bottom:8px; }
+        .container { max-width:800px; margin:0 auto; }
+        .card { border-bottom:1px solid #e6efec; padding:12px 0; page-break-inside:avoid; }
+        .card + .card { margin-top:10px; }
+        .meta { color: #506A6D; font-size: 12px; margin-bottom:6px; }
+        .img { max-width:150px; max-height:150px; object-fit:contain; border:1px solid #e5ecea; padding:6px; border-radius:8px; background:white; }
+        .result-text { white-space:pre-wrap; font-size:14px; margin-top:8px; background:#fbfffe; padding:10px; border-radius:8px; border:1px solid #eef7f4;}
+        .footer-note { margin-top:18px; color:#6c8b87; font-size:12px; }
+        @media print {
+          .no-print { display:none !important; }
+        }
+      </style>
+    `;
+
+    let bodyHtml = `<div class="container"><h1>Converted Prescriptions (${items.length})</h1>`;
+    items.forEach((it, idx) => {
+      const name = escapeHtml(it.name || `File ${idx+1}`);
+      const ts = formatDate(it.ts || Date.now());
+      const dataUri = it.dataUrl || '';
+      const text = escapeHtml(it.resultText || '');
+      bodyHtml += `
+        <div class="card">
+          <div class="meta">${name} • ${ts}</div>
+          <div style="display:flex; gap:12px; align-items:flex-start;">
+            <div style="flex:0 0 160px;">
+              <img class="img" src="${dataUri}" alt="${name}">
+            </div>
+            <div style="flex:1;">
+              <div class="result-text">${text}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+    bodyHtml += `<div class="footer-note no-print">Generated by ReSeeta — ${new Date().toLocaleString()}</div></div>`;
+
+    // Open a new window and print
+    const w = window.open('', '_blank');
+    if (!w) {
+      alert('Pop-up blocked: allow pop-ups for this site to print/download prescriptions.');
+      return;
+    }
+
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Print Prescriptions</title>' + printableStyles + '</head><body>');
+    w.document.write(bodyHtml);
+    w.document.write('</body></html>');
+
+    // Wait for assets to load then call print
+    w.document.close();
+    w.focus();
+
+    // call print after load; close window after a short delay to allow print dialog to appear
+    const tryPrint = () => {
+      try {
+        w.print();
+        // give user time to complete printing / save as PDF — close after 1.5s
+        setTimeout(() => {
+          try { w.close(); } catch {}
+        }, 1500);
+      } catch (err) {
+        // if printing fails, keep the window open for the user
+        console.warn('Print failed or blocked', err);
+      }
+    };
+
+    // If images are present, wait a bit; otherwise print immediately
+    const imgs = w.document.images;
+    if (imgs && imgs.length) {
+      let loaded = 0;
+      for (let i = 0; i < imgs.length; i++) {
+        imgs[i].onload = imgs[i].onerror = () => {
+          loaded++;
+          if (loaded >= imgs.length) tryPrint();
+        };
+      }
+      // fallback: print after 1s even if images stuck
+      setTimeout(tryPrint, 1000);
+    } else {
+      setTimeout(tryPrint, 200);
+    }
+  }
+
+  // attach print handler
+  if (btnPrintHistory) {
+    btnPrintHistory.addEventListener('click', () => {
+      // Only act when enabled
+      if (btnPrintHistory.hasAttribute('disabled')) return;
+      printConvertedItems();
+    });
+  }
+
+  /* ========== end print helpers ========== */
+
   function initUI(){
     resetUploadingUI();
     if (modelSelect) {
@@ -803,6 +989,8 @@
         updateContextToggleAvailability();
       });
     }
+    // ensure print availability is accurate at startup
+    updatePrintAvailability();
   }
   initUI();
   window.addEventListener('pageshow', initUI);
