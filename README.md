@@ -16,7 +16,7 @@ This system was collaboratively engineered by a 5-member academic research team,
 ## 💻 Tech Stack & Architecture
 
 - **Frontend:** HTML5, CSS3, JavaScript, UI/UX Design Principles
-- **Backend Framework:** Laravel, PHP
+- **Backend Framework:** Laravel, PHP, Python
 - **Database:** MySQL / SQLite
 - **Deep Learning Models:** ViT (Vision Transformer) & CRNN (Convolutional Recurrent Neural Network)
 
